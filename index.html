@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Print Layout Tool</title>
+    <style>
+        :root {
+            --primary: #005A9C;
+            --bg: #f3f3f3;
+            --panel: #ffffff;
+            --border: #cccccc;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        /* UI Layout */
+        .preview-pane {
+            flex: 1;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .control-panel {
+            width: 300px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h2 { margin-top: 0; font-size: 1.2rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+        label { font-weight: bold; font-size: 0.9rem; }
+        select, input[type="file"], button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #004080; }
+        .checkbox-group { display: flex; align-items: center; gap: 10px; font-weight: normal; cursor: pointer; }
+        
+        /* Print Preview Grids */
+        .print-page {
+            background: white;
+            border: 1px dashed #999;
+            margin: 0 auto 20px auto;
+            padding: 0.25in;
+            box-sizing: border-box;
+            display: grid;
+            gap: 0.2in;
+            width: 8.5in;
+            height: 11in;
+        }
+        .print-page img {
+            width: 100%;
+            height: 100%;
+            background: #eee;
+        }
+        .fit-frame { object-fit: cover; }
+        .no-fit { object-fit: contain; }
+
+        /* Print Media Queries - Hides UI and formats pages */
+        @media print {
+            body { padding: 0; background: white; display: block; height: auto; }
+            .control-panel { display: none; }
+            .preview-pane { border: none; padding: 0; box-shadow: none; overflow: visible; display: block; }
+            .print-page {
+                border: none;
+                margin: 0;
+                padding: 0;
+                page-break-after: always; /* Forces a new page for each chunk */
+                width: 100%;
+                height: 100%;
+            }
+            @page { margin: 0.5in; size: letter portrait; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="preview-pane" id="previewPane">
+        <p style="text-align:center; color:#666; margin-top: 20%;">Upload photos to see the print preview.</p>
+    </div>
+
+    <div class="control-panel">
+        <h2>Print Options</h2>
+        
+        <div>
+            <label for="fileInput">1. Select Photos</label>
+            <input type="file" id="fileInput" multiple accept="image/*">
+        </div>
+
+        <div>
+            <label for="layoutSelect">2. Choose Layout</label>
+            <select id="layoutSelect">
+                <option value="full">Full page photo</option>
+                <option value="8x10">8 x 10 in. (1 per page)</option>
+                <option value="5x7">5 x 7 in. (2 per page)</option>
+                <option value="4x6">4 x 6 in. (2 per page)</option>
+                <option value="3.5x5">3.5 x 5 in. (4 per page)</option>
+                <option value="wallet" selected>Wallet (9 per page)</option>
+            </select>
+        </div>
+
+        <label class="checkbox-group">
+            <input type="checkbox" id="fitToFrame" checked> Fit picture to frame
+        </label>
+
+        <button onclick="window.print()" id="printBtn" disabled>Print Pictures</button>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const layoutSelect = document.getElementById('layoutSelect');
+        const fitToFrame = document.getElementById('fitToFrame');
+        const previewPane = document.getElementById('previewPane');
+        const printBtn = document.getElementById('printBtn');
+        let selectedFiles = [];
+
+        // Layout definitions mimicking Windows
+        const layouts = {
+            'full': { imagesPerPage: 1, columns: 1 },
+            '8x10': { imagesPerPage: 1, columns: 1 },
+            '5x7': { imagesPerPage: 2, columns: 1 },
+            '4x6': { imagesPerPage: 2, columns: 1 },
+            '3.5x5': { imagesPerPage: 4, columns: 2 },
+            'wallet': { imagesPerPage: 9, columns: 3 }
+        };
+
+        // Event Listeners to re-render when the staff member changes a setting
+        fileInput.addEventListener('change', (e) => {
+            selectedFiles = Array.from(e.target.files);
+            renderPreview();
+        });
+        layoutSelect.addEventListener('change', renderPreview);
+        fitToFrame.addEventListener('change', renderPreview);
+
+        function renderPreview() {
+            if (selectedFiles.length === 0) {
+                previewPane.innerHTML = '<p style="text-align:center; color:#666; margin-top: 20%;">Upload photos to see the print preview.</p>';
+                printBtn.disabled = true;
+                return;
+            }
+
+            printBtn.disabled = false;
+            previewPane.innerHTML = '';
+            
+            const layout = layouts[layoutSelect.value];
+            const fitClass = fitToFrame.checked ? 'fit-frame' : 'no-fit';
+
+            // Chunk the photos into pages
+            for (let i = 0; i < selectedFiles.length; i += layout.imagesPerPage) {
+                const chunk = selectedFiles.slice(i, i + layout.imagesPerPage);
+                
+                // Create a page container
+                const page = document.createElement('div');
+                page.className = 'print-page';
+                page.style.gridTemplateColumns = `repeat(${layout.columns}, 1fr)`;
+                
+                // Add photos to the page
+                chunk.forEach(file => {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    img.className = fitClass;
+                    page.appendChild(img);
+                });
+
+                previewPane.appendChild(page);
+            }
+        }
+    </script>
+</body>
+</html>
